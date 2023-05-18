@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -o errexit
+
+
+print_stderr() {
+	[[ $2 ]] && printf "$2" "${@:3}" 1>&2
+	[[ $1 == '0' ]] || exit $1
+}
+
+
+
+pipe_dir=
+path_in_clipboard=
+while [[ $1 ]]; do
+	case $1 in
+		'--pipe-dir'|'-d')
+			shift; pipe_dir=$1 ;;
+		'--clip'|'-c')
+			path_in_clipboard=1 ;;
+		*)
+			print_stderr 1 '%s\n' 'Unrecognized parameter: '"$1" ;;
+	esac
+	shift
+done
+
+
+
+# Define paths
+: ${pipe_dir:='/tmp'}
+fifo_path=$pipe_dir'/catpipe__fifo_'$$
+[[ -d $pipe_dir ]] || print_stderr 1 '%s\n' 'Pipe directory missing: '"$pipe_dir"
+[[ -e $fifo_path ]] && rm "$fifo_path"
+
+
+
+# Create named pipe and handle removal on exit
+on_exit() {
+	rm "$fifo_path"
+}
+mkfifo --mode 0600 "$fifo_path"
+trap on_exit EXIT
+
+
+
+# Output path to named pipe
+printf '%s\n\n' 'Reading from: '"$fifo_path"
+if [[ $path_in_clipboard ]]; then
+	type clip-in &> /dev/null || print_stderr 1 'Missing dependency: clip-in'
+	printf '%s' "$fifo_path" | clip-in
+fi
+
+
+
+# cat the named pipe perpetually encapulating each read
+printf '\e[32m%s\e[0m' '>'
+while cat "$fifo_path"; do
+	printf '\e[31m%s\e[0m\n' '<'
+	printf '\e[32m%s\e[0m' '>'
+done
+
+
+
